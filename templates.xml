@@ -1,0 +1,26 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+    <!-- A tameable beast on the zone maps. The size, the round dot and the mixin are in pet_map.lua.
+         No OnEnter or OnLeave here: the map calls the mixin's OnMouseEnter and OnMouseLeave itself
+         and stops with an error on a new pin that has scripts of its own. -->
+    <Frame name="PetMapPinTemplate" mixin="PetMapPinMixin" enableMouse="true" virtual="true">
+        <Size x="12" y="12"/>
+        <Scripts>
+            <OnLoad method="OnLoad"/>
+        </Scripts>
+    </Frame>
+
+    <!-- A line of text in the settings list. The text is set in pet_map.lua. -->
+    <Frame name="PetMapSettingsLineTemplate" virtual="true">
+        <Size y="20"/>
+        <Layers>
+            <Layer level="OVERLAY">
+                <FontString parentKey="Text" inherits="GameFontHighlight" justifyH="LEFT" justifyV="TOP">
+                    <Anchors>
+                        <Anchor point="TOPLEFT" x="37" y="-4"/>
+                        <Anchor point="RIGHT" x="-20"/>
+                    </Anchors>
+                </FontString>
+            </Layer>
+        </Layers>
+    </Frame>
+</Ui>

@@ -1,0 +1,10 @@
+## Interface: 16001
+## Version: 0.1.0
+## Title: Pet Map
+## Author: Féone Hunt - EU - PVE
+## Notes: Shows where the beasts a hunter can tame are found on the zone maps.
+## SavedVariables: PetMapDB
+
+data\hunter_pets.lua
+pet_map.lua
+templates.xml
