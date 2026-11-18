@@ -4,6 +4,7 @@ local _, ns = ...
 -- beast in the middle of where it is found, or one dot per spawn. A button on the map
 -- opens a menu with the choices, and the same choices are on the settings page.
 local DOT_SIZE = { approximate = 12, all = 8 }
+ns.DOT_SIZE = DOT_SIZE
 local DOT_BORDER = 1.5
 local CIRCLE_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local ICON = "Interface\\Icons\\Ability_Hunter_BeastTaming"
@@ -48,7 +49,7 @@ local function GetHidden(kind)
     return PetMapDB[key]
 end
 
-local function IsShown(beast)
+function ns.IsShown(beast)
     if GetHidden("family")[beast.family] or GetHidden("beast")[beast.name] then
         return false
     end
@@ -63,7 +64,7 @@ end
 
 -- The dots on the map.
 
-local function CreateRoundTexture(frame, sublevel, inset)
+function ns.CreateRoundTexture(frame, sublevel, inset)
     local texture = frame:CreateTexture(nil, "ARTWORK", nil, sublevel)
     texture:SetPoint("TOPLEFT", inset, -inset)
     texture:SetPoint("BOTTOMRIGHT", -inset, inset)
@@ -79,24 +80,33 @@ PetMapPinMixin = CreateFromMixins(MapCanvasPinMixin)
 function PetMapPinMixin:OnLoad()
     self:UseFrameLevelType("PIN_FRAME_LEVEL_AREA_POI")
     self:SetScalingLimits(1, 1.0, 1.2)
-    self.Border = CreateRoundTexture(self, 0, 0)
-    self.Border:SetColorTexture(0, 0, 0, 0.9)
-    self.Dot = CreateRoundTexture(self, 1, DOT_BORDER)
+    ns.SetupDot(self)
+end
+
+-- The black ring and the coloured dot inside it, used by the dots on both maps.
+function ns.SetupDot(frame)
+    frame.Border = ns.CreateRoundTexture(frame, 0, 0)
+    frame.Border:SetColorTexture(0, 0, 0, 0.9)
+    frame.Dot = ns.CreateRoundTexture(frame, 1, DOT_BORDER)
+end
+
+function ns.SetDotColor(frame, beast)
+    local family = ns.HUNTER_PET_FAMILIES[beast.family]
+    local color = family and family.color or { 1, 1, 1 }
+    frame.Dot:SetColorTexture(color[1], color[2], color[3])
 end
 
 function PetMapPinMixin:OnAcquired(beast, x, y, size)
     self.beast = beast
     self:SetSize(size, size)
-    local family = ns.HUNTER_PET_FAMILIES[beast.family]
-    local color = family and family.color or { 1, 1, 1 }
-    self.Dot:SetColorTexture(color[1], color[2], color[3])
+    ns.SetDotColor(self, beast)
     self:SetPosition(x, y)
 end
 
-function PetMapPinMixin:OnMouseEnter()
-    local beast = self.beast
+-- The beast's name, levels, family and whether it is rare or elite.
+function ns.ShowBeastTooltip(owner, beast)
     local family = ns.HUNTER_PET_FAMILIES[beast.family]
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
     GameTooltip:SetText(beast.name)
     if beast.levels then
         GameTooltip:AddLine(LEVEL .. " " .. FormatLevels(beast.levels[1], beast.levels[2]), 1, 1, 1)
@@ -112,6 +122,10 @@ function PetMapPinMixin:OnMouseEnter()
         GameTooltip:AddLine("Elite", 1, 0.82, 0)
     end
     GameTooltip:Show()
+end
+
+function PetMapPinMixin:OnMouseEnter()
+    ns.ShowBeastTooltip(self, self.beast)
 end
 
 function PetMapPinMixin:OnMouseLeave()
@@ -136,7 +150,7 @@ local function SetupProvider()
         local mapID = map:GetMapID()
         local mapInfo = mapID and C_Map.GetMapInfo(mapID)
         for _, beast in ipairs(mapInfo and ns.HUNTER_PETS[mapInfo.name] or {}) do
-            if not IsShown(beast) then
+            if not ns.IsShown(beast) then
                 -- Left out by the choices in the menu.
             elseif mode == "all" then
                 local points = beast.points
@@ -165,6 +179,9 @@ local function Update()
     if provider and provider:GetMap() then
         provider:RefreshAllData()
     end
+    if ns.UpdateMinimap then
+        ns.UpdateMinimap()
+    end
 end
 
 local function ShowButtonTooltip(self)
@@ -172,6 +189,7 @@ local function ShowButtonTooltip(self)
     GameTooltip:AddLine("Pet Map")
     GameTooltip:AddDoubleLine("Show", FindChoice(MODES, PetMapDB.show).label, 1, 1, 1, 1, 1, 1)
     GameTooltip:AddDoubleLine("Which", FindChoice(RARITIES, PetMapDB.rarity).label, 1, 1, 1, 1, 1, 1)
+    GameTooltip:AddDoubleLine("Minimap", PetMapDB.minimap and "On" or "Off", 1, 1, 1, 1, 1, 1)
     if next(GetHidden("family")) or next(GetHidden("beast")) then
         GameTooltip:AddLine("Some families or beasts are hidden.", 1, 0.82, 0)
     end
@@ -317,6 +335,12 @@ local function SetupButton()
         GameTooltip:Hide()
         MenuUtil.CreateContextMenu(self, function(_, root)
             AddMenuSection(root, "Show", "show", MODES)
+            root:CreateCheckbox("Show on minimap", function()
+                return PetMapDB.minimap
+            end, function()
+                SetOption("minimap", not PetMapDB.minimap)
+                return MenuResponse and MenuResponse.Refresh
+            end)
             root:CreateDivider()
             AddMenuSection(root, "Which", "rarity", RARITIES)
             root:CreateDivider()
@@ -342,7 +366,7 @@ local function SetupMap()
     SetupButton()
 end
 
--- The settings page: the two choices, and a line about the button on the map.
+-- The settings page: the choices, and a line about the button on the map.
 
 local function AddDropdown(category, key, label, tooltip, default, choices)
     local setting = Settings.RegisterAddOnSetting(category, "PetMap_" .. key, key, PetMapDB,
@@ -368,6 +392,14 @@ local function RegisterSettings()
             .. "\nOne per beast: one dot in the middle of where the beast is found."
             .. "\nAll spawns: a dot for every place the beast can be found.",
         "off", MODES)
+    local minimapSetting = Settings.RegisterAddOnSetting(category, "PetMap_minimap", "minimap", PetMapDB,
+        "boolean", "Show on minimap", false)
+    -- Older clients name it CreateCheckBox.
+    local createCheckbox = Settings.CreateCheckbox or Settings.CreateCheckBox
+    createCheckbox(category, minimapSetting,
+        "Shows the hunter pets near you on the minimap, also when they are off on the world map. "
+            .. "With the world map's Show set to Off, the minimap shows one dot per beast.")
+    minimapSetting:SetValueChangedCallback(Update)
     AddDropdown(category, "rarity", "Which hunter pets",
         "Shows all hunter pets, only the rare ones or only those that are not rare.",
         "all", RARITIES)
